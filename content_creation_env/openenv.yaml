@@ -9,7 +9,7 @@ port: 8000
 
 env:
   API_BASE_URL: "https://router.huggingface.co/v1"
-  MODEL_NAME: "Qwen/Qwen2.5-72B-Instruct:novita"
+  MODEL_NAME: "meta-llama/Llama-3.1-8B-Instruct"
   HF_TOKEN: ""
 
 tasks:

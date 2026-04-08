@@ -206,12 +206,12 @@ class ContentCreationEnvironment(Environment):
     def _grade_submission(self, submission: str) -> tuple:
         """
         Scoring breakdown:
-        - Asked about audience       → +0.10
-        - Asked about colors         → +0.10
-        - Asked about platform       → +0.10
-        - Asked about keywords       → +0.10
-        - All mandatory hashtags     → +0.20
-        - Thumbnail color mentioned  → +0.10
+        - Audience info present      → +0.10
+        - Thumbnail style present    → +0.10
+        - Platform info present      → +0.10
+        - Keywords/hashtags present  → +0.10
+        - Mandatory hashtags (case-insensitive, partial credit) → +0.20
+        - Thumbnail color word       → +0.10
         - 2+ keywords in submission  → +0.15
         - Title present & ≤60 chars  → +0.10
         - Description present        → +0.05
@@ -222,68 +222,113 @@ class ContentCreationEnvironment(Environment):
         feedback_parts = []
         sub = submission.lower()
 
-        # Clarifying questions asked
-        if self._asked_about_audience:
+        # Audience — asked during conversation OR mentioned in submission
+        audience_in_sub = any(w in sub for w in ["audience", "viewers", "demographic", "aged", "age", "target audience", "for"])
+        if self._asked_about_audience or audience_in_sub:
             reward += 0.10
-            feedback_parts.append("✅ Asked about target audience (+0.10)")
+            feedback_parts.append("✅ Target audience addressed (+0.10)")
         else:
-            feedback_parts.append("❌ Never asked about target audience (0.00)")
+            feedback_parts.append("❌ Target audience not addressed (0.00)")
 
-        if self._asked_about_color:
+        # Thumbnail — asked OR mentioned in submission
+        color_in_sub = any(w in sub for w in ["thumbnail", "color", "colour", "visual", "style", "design", "background"])
+        if self._asked_about_color or color_in_sub:
             reward += 0.10
-            feedback_parts.append("✅ Asked about thumbnail colors (+0.10)")
+            feedback_parts.append("✅ Thumbnail style addressed (+0.10)")
         else:
-            feedback_parts.append("❌ Never asked about thumbnail colors (0.00)")
+            feedback_parts.append("❌ Thumbnail style not addressed (0.00)")
 
-        if self._asked_about_platform:
+        # Platform — asked OR mentioned in submission
+        platform_in_sub = any(w in sub for w in ["youtube", "instagram", "tiktok", "platform", "reels", "shorts", "channel"])
+        if self._asked_about_platform or platform_in_sub:
             reward += 0.10
-            feedback_parts.append("✅ Asked about platform (+0.10)")
+            feedback_parts.append("✅ Platform addressed (+0.10)")
         else:
-            feedback_parts.append("❌ Never asked about platform (0.00)")
+            feedback_parts.append("❌ Platform not addressed (0.00)")
 
-        if self._asked_about_keywords:
+        # Keywords section present
+        keywords_in_sub = any(w in sub for w in ["keyword", "keywords", "seo", "#"])
+        if self._asked_about_keywords or keywords_in_sub:
             reward += 0.10
-            feedback_parts.append("✅ Asked about keywords (+0.10)")
+            feedback_parts.append("✅ Keywords addressed (+0.10)")
         else:
-            feedback_parts.append("❌ Never asked about keywords (0.00)")
+            feedback_parts.append("❌ Keywords not addressed (0.00)")
 
-        # Mandatory hashtags
-        hashtags_found = all(tag.lower() in sub for tag in p["mandatory_hashtags"])
-        if hashtags_found:
+        # Mandatory hashtags — case-insensitive, partial credit
+        # Strip # and compare lowercase
+        sub_tags = set()
+        for word in sub.split():
+            clean = word.strip(".,!?()[]").lstrip("#")
+            sub_tags.add(clean.lower())
+
+        mandatory_lower = [t.lstrip("#").lower() for t in p["mandatory_hashtags"]]
+        matched = sum(1 for t in mandatory_lower if t in sub_tags or t in sub)
+        total   = len(mandatory_lower)
+
+        if matched == total:
             reward += 0.20
             feedback_parts.append("✅ All mandatory hashtags included (+0.20)")
+        elif matched >= 1:
+            partial = round(0.20 * matched / total, 2)
+            reward += partial
+            missing = [p["mandatory_hashtags"][i] for i, t in enumerate(mandatory_lower) if t not in sub_tags and t not in sub]
+            feedback_parts.append(f"⚠️ {matched}/{total} hashtags found, partial (+{partial}) — missing: {missing}")
         else:
-            missing = [t for t in p["mandatory_hashtags"] if t.lower() not in sub]
+            missing = p["mandatory_hashtags"]
             feedback_parts.append(f"❌ Missing hashtags: {missing} (0.00)")
 
-        # Thumbnail color
-        color_word = p["color"].split()[0].lower()
-        if color_word in sub:
+        # Thumbnail color word from persona — check all words in color string
+        color_words = p["color"].lower().split()
+        color_hit = any(cw in sub for cw in color_words if len(cw) > 3)
+        if color_hit:
             reward += 0.10
             feedback_parts.append("✅ Thumbnail color mentioned (+0.10)")
         else:
             feedback_parts.append("❌ Thumbnail color missing (0.00)")
 
-        # Keywords in submission
+        # Keywords in submission — partial credit, case-insensitive
         kw_found = sum(1 for kw in p["keywords"] if kw.lower() in sub)
         if kw_found >= 2:
             reward += 0.15
             feedback_parts.append(f"✅ {kw_found} keywords found (+0.15)")
+        elif kw_found == 1:
+            reward += 0.07
+            feedback_parts.append(f"⚠️ Only 1 keyword found, partial (+0.07)")
         else:
-            feedback_parts.append(f"❌ Only {kw_found} keywords found, need 2+ (0.00)")
+            feedback_parts.append(f"❌ No keywords found (0.00)")
 
-        # Title length check (look for a line ≤60 chars that isn't a hashtag line)
+        # Title length check — look for SEO Title: line or any short line ≤60 chars
         lines = submission.split("\n")
-        title_lines = [l.strip() for l in lines if 5 < len(l.strip()) <= 60 and not l.strip().startswith("#")]
-        if title_lines:
+        title_found = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.lower().startswith("seo title:"):
+                title_text = stripped[10:].strip()
+                if 5 < len(title_text) <= 60:
+                    title_found = True
+                    break
+            elif 5 < len(stripped) <= 60 and not stripped.startswith("#") and ":" not in stripped[:15]:
+                title_found = True
+                break
+        if title_found:
             reward += 0.10
-            feedback_parts.append(f"✅ SEO title found within 60 chars (+0.10)")
+            feedback_parts.append("✅ SEO title found within 60 chars (+0.10)")
         else:
             feedback_parts.append("❌ No valid SEO title ≤60 chars found (0.00)")
 
-        # Description present (any line > 60 chars)
-        desc_lines = [l.strip() for l in lines if len(l.strip()) > 60]
-        if desc_lines:
+        # Description present — look for Description: line or any long line
+        desc_found = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped.lower().startswith("description:"):
+                desc_text = stripped[12:].strip()
+                if len(desc_text) > 30:
+                    desc_found = True
+                    break
+            elif len(stripped) > 80:
+                desc_found = True
+                break
+        if desc_found:
             reward += 0.05
             feedback_parts.append("✅ Description present (+0.05)")
         else:
