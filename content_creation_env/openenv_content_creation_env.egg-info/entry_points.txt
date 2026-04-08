@@ -1,0 +1,2 @@
+[console_scripts]
+server = content_creation_env.server.app:main

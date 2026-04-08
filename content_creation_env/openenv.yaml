@@ -1,0 +1,31 @@
+spec_version: 1
+name: content_creation_env
+version: "1.0.0"
+description: "A content creation RL environment where an AI agent helps clients create YouTube/social media metadata"
+type: space
+runtime: fastapi
+app: server.app:app
+port: 8000
+
+env:
+  API_BASE_URL: "https://router.huggingface.co/v1"
+  MODEL_NAME: "Qwen/Qwen2.5-72B-Instruct:novita"
+  HF_TOKEN: ""
+
+tasks:
+  - id: gaming_content
+    description: "Create YouTube metadata for a gaming video"
+  - id: study_content
+    description: "Create YouTube metadata for a study/education video"
+  - id: beauty_content
+    description: "Create YouTube metadata for a beauty/makeup video"
+  - id: food_content
+    description: "Create YouTube metadata for a food/cooking video"
+  - id: tech_content
+    description: "Create YouTube metadata for a tech review video"
+  - id: finance_content
+    description: "Create YouTube metadata for a personal finance video"
+  - id: travel_content
+    description: "Create YouTube metadata for a travel video"
+  - id: fitness_content
+    description: "Create YouTube metadata for a fitness/workout video"
